@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -676,8 +676,6 @@
     </div>
   </footer>
 
-  <script src="storefront.js"></script>
-
   <!-- ======================================================== -->
   <!-- OWNER LOGIN MODAL                                        -->
   <!-- ======================================================== -->
@@ -825,20 +823,14 @@
                   <input type="text" id="newProdCategory" required placeholder="e.g. Rainbow Six or Rust or DMA">
                 </div>
                 <div class="form-group">
-                  <label for="newProdImagePreset">Cover Image Preset *</label>
-                  <div style="display: flex; gap: 8px;">
-                    <select id="newProdImagePreset" style="flex: 1;">
-                      <option value="assets/fortnite.svg">Fortnite Vector Cover</option>
-                      <option value="assets/cs2.svg">CS2 Tactical Cover</option>
-                      <option value="assets/rust.svg">Rust Hazmat Cover</option>
-                      <option value="assets/valorant.svg">Valorant Shield Cover</option>
-                      <option value="assets/apex.svg">Apex Predator Cover</option>
-                      <option value="assets/warzone.svg">Warzone Cover</option>
-                      <option value="assets/spoofer.svg">HWID Spoofer Cover</option>
-                      <option value="assets/dma.svg">DMA Firmware Cover</option>
-                      <option value="custom">Custom URL...</option>
-                    </select>
-                    <input type="text" id="newProdImageCustom" placeholder="https://..." style="display: none; flex: 1;">
+                  <label>Product Thumbnail *</label>
+                  <input type="hidden" id="newProdImage" value="assets/fortnite.svg">
+                  <div class="owner-image-field">
+                    <img id="newProdImagePreview" src="assets/fortnite.svg" alt="Selected thumbnail" class="owner-image-preview" onerror="this.src='assets/fortnite.svg';">
+                    <div class="owner-image-field-info">
+                      <button type="button" class="btn btn-secondary btn-sm" id="chooseNewProdImageBtn">Choose / Upload Image</button>
+                      <span class="input-hint" id="newProdImageHint">assets/fortnite.svg</span>
+                    </div>
                   </div>
                 </div>
                 <div class="form-group">
@@ -1028,7 +1020,64 @@
     </div>
   </div>
 
+  <!-- ======================================================== -->
+  <!-- OWNER THUMBNAIL IMAGE PICKER MODAL                        -->
+  <!-- ======================================================== -->
+  <div class="modal-overlay owner-image-picker-overlay" id="ownerImagePickerModal">
+    <div class="modal-container owner-image-picker-container">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon owner-badge-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff1f38" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+          </div>
+          <div>
+            <h3 class="modal-title">Product Thumbnail</h3>
+            <p class="modal-subtitle">Pick a cover, paste an image URL, or upload your own image.</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="ownerImagePickerClose">&times;</button>
+      </div>
+
+      <div class="modal-body owner-image-picker-body">
+        <div class="image-picker-preview-wrap">
+          <img id="imagePickerPreview" src="assets/fortnite.svg" alt="Thumbnail preview" class="image-picker-preview" onerror="this.src='assets/fortnite.svg';">
+          <div>
+            <strong id="imagePickerSourceLabel">assets/fortnite.svg</strong>
+            <span class="input-hint">This image will be used as the product thumbnail in the store catalog.</span>
+          </div>
+        </div>
+
+        <div class="image-picker-section-title">Cover Presets</div>
+        <div class="image-picker-grid" id="imagePickerPresets"><!-- Built by storefront.js --></div>
+
+        <div class="image-picker-section-title">Upload Your Own</div>
+        <div class="image-picker-upload-row">
+          <label class="btn btn-secondary btn-sm image-picker-upload-label" for="imagePickerFileInput">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            Choose Image File
+          </label>
+          <input type="file" id="imagePickerFileInput" accept="image/*" hidden>
+          <span class="input-hint">JPG, PNG, WEBP or SVG. Large images are resized automatically.</span>
+        </div>
+
+        <div class="image-picker-section-title">Or Use an Image URL</div>
+        <div class="image-picker-url-row">
+          <input type="text" id="imagePickerCustomUrl" placeholder="https://example.com/cover.png">
+          <button type="button" class="btn btn-secondary btn-sm" id="applyImageUrlBtn">Use URL</button>
+        </div>
+        <div id="imagePickerError" class="owner-alert error" style="display: none;"></div>
+      </div>
+
+      <div class="modal-footer owner-image-picker-footer">
+        <button type="button" class="btn btn-secondary btn-sm" id="imagePickerCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="imagePickerSaveBtn">Use This Image</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast-container" id="toastContainer"></div>
+
+  <script src="storefront.js"></script>
 </body>
 </html>
 
