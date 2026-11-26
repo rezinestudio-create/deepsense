@@ -52,7 +52,7 @@ export async function POST(request) {
     }
 
     const password = passwordFromRequest(request);
-    const state = await readState();
+    let state = await readState();
 
     if (!state) {
       return fail('Store has not been initialized. Log in once from the Owner Console first.', 409);
@@ -96,6 +96,6 @@ export async function POST(request) {
     return fail('Unknown action.', 400);
   } catch (error) {
     console.error('Owner API error:', error);
-    return fail(`Store write failed: ${error?.message || String(error)}`, 500);
+    return fail('Unable to reach the shared store. Try again in a moment.', 500);
   }
 }
