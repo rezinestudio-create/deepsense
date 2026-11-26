@@ -2168,6 +2168,16 @@
           toggle.textContent = show ? 'Hide Password' : 'Show Password';
         }
       }
+
+      const toggleAdd = e.target.closest('#toggleAddProductFormBtn');
+      if (toggleAdd) {
+        const box = document.getElementById('addProductFormWrapper');
+        if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+      }
+      if (e.target.closest('#cancelAddProductBtn')) {
+        const box = document.getElementById('addProductFormWrapper');
+        if (box) box.style.display = 'none';
+      }
     });
 
     // Login Form Submit — delegated so it works even if the modal DOM is re-rendered.
@@ -2221,6 +2231,19 @@
       }
     });
 
+    // All Owner Console forms use delegated handlers. This keeps them working
+    // even if a later setup step throws before its direct listeners are bound.
+    const ownerFormHandlers = {
+      ownerAddProductForm: handleOwnerAddProduct,
+      ownerAddKeysForm: handleOwnerAddKeys,
+      ownerPaymentsForm: handleOwnerSavePayments,
+      ownerChangePasswordForm: handleOwnerChangePassword
+    };
+    document.addEventListener('submit', (e) => {
+      const handler = e.target && ownerFormHandlers[e.target.id];
+      if (typeof handler === 'function') handler(e);
+    });
+
     // Logout
     if (ownerElements.logoutBtn) {
       ownerElements.logoutBtn.addEventListener('click', () => {
@@ -2265,24 +2288,6 @@
       ownerElements.imagePickerFileInput.addEventListener('change', handleImagePickerUpload);
     }
 
-    // Toggle Add Product Form
-    if (ownerElements.toggleAddProductBtn) {
-      ownerElements.toggleAddProductBtn.addEventListener('click', () => {
-        const isHidden = ownerElements.addProductBox.style.display === 'none';
-        ownerElements.addProductBox.style.display = isHidden ? 'block' : 'none';
-      });
-    }
-    if (ownerElements.cancelAddProductBtn) {
-      ownerElements.cancelAddProductBtn.addEventListener('click', () => {
-        ownerElements.addProductBox.style.display = 'none';
-      });
-    }
-
-    // Add Product Submit
-    if (ownerElements.addProductForm) {
-      ownerElements.addProductForm.addEventListener('submit', handleOwnerAddProduct);
-    }
-
     // Key Count input helper
     if (ownerElements.stockTextarea) {
       ownerElements.stockTextarea.addEventListener('input', () => {
@@ -2291,18 +2296,10 @@
       });
     }
 
-    // Add Keys Submit
-    if (ownerElements.addKeysForm) {
-      ownerElements.addKeysForm.addEventListener('submit', handleOwnerAddKeys);
-    }
     if (ownerElements.refreshStockBtn) {
       ownerElements.refreshStockBtn.addEventListener('click', renderStockLedger);
     }
 
-    // Payment Form Submit
-    if (ownerElements.paymentsForm) {
-      ownerElements.paymentsForm.addEventListener('submit', handleOwnerSavePayments);
-    }
     if (ownerElements.resetPaymentsBtn) {
       ownerElements.resetPaymentsBtn.addEventListener('click', async () => {
         if (confirm('Restore default payment gateway addresses?')) {
@@ -2311,11 +2308,6 @@
           showToast('Payment gateways restored to defaults.');
         }
       });
-    }
-
-    // Change Password Submit
-    if (ownerElements.changePwdForm) {
-      ownerElements.changePwdForm.addEventListener('submit', handleOwnerChangePassword);
     }
 
     // Store Reset
