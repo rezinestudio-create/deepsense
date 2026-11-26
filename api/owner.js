@@ -96,6 +96,6 @@ export async function POST(request) {
     return fail('Unknown action.', 400);
   } catch (error) {
     console.error('Owner API error:', error);
-    return fail('Unable to reach the shared store. Try again in a moment.', 500);
+    return fail(`Store write failed: ${error?.message || String(error)}`, 500);
   }
 }
