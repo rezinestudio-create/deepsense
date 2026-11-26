@@ -2081,20 +2081,11 @@
     }
   }
 
-      // Expose openOwnerPortal globally and bind F5 hotkey
+  // Expose the owner portal opener globally and bind F5 hotkey.
+  // Inline handlers in index.html call this global function, so keep it
+  // pointed at the single implementation defined below.
   window.openOwnerPortal = function() {
-    const loginModal = document.getElementById('ownerLoginModal');
-    const loginError = document.getElementById('ownerLoginError');
-    const loginEmail = document.getElementById('ownerLoginEmail');
-    const loginPassword = document.getElementById('ownerLoginPassword');
-
-    if (loginError) loginError.style.display = 'none';
-    if (loginEmail) loginEmail.value = '';
-    if (loginPassword) loginPassword.value = '';
-    if (loginModal) {
-      loginModal.classList.add('open');
-      setTimeout(() => loginEmail && loginEmail.focus(), 120);
-    }
+    openOwnerPortal();
   };
 
   // F5 Key Shortcut to open Owner Panel
@@ -2109,35 +2100,44 @@
   function openOwnerPortal() {
     if (isOwnerAuthenticated()) {
       openOwnerDashboard();
-    } else {
-      if (ownerElements.loginModal) {
-        if (ownerElements.loginError) {
-          ownerElements.loginError.style.display = 'none';
-          ownerElements.loginError.textContent = '';
-        }
-        if (ownerElements.loginEmail) ownerElements.loginEmail.value = OWNER_EMAIL;
-        if (ownerElements.loginPassword) ownerElements.loginPassword.value = '';
-        ownerElements.loginModal.classList.add('open');
-        setTimeout(() => ownerElements.loginPassword && ownerElements.loginPassword.focus(), 150);
-      }
+      return;
+    }
+
+    const loginModal = document.getElementById('ownerLoginModal');
+    const loginError = document.getElementById('ownerLoginError');
+    const loginEmail = document.getElementById('ownerLoginEmail');
+    const loginPassword = document.getElementById('ownerLoginPassword');
+
+    if (loginError) {
+      loginError.style.display = 'none';
+      loginError.textContent = '';
+    }
+    if (loginEmail) loginEmail.value = OWNER_EMAIL;
+    if (loginPassword) loginPassword.value = '';
+    if (loginModal) {
+      loginModal.classList.add('open');
+      setTimeout(() => loginPassword && loginPassword.focus(), 150);
     }
   }
 
   function closeOwnerLogin() {
-    if (ownerElements.loginModal) ownerElements.loginModal.classList.remove('open');
+    const loginModal = document.getElementById('ownerLoginModal');
+    if (loginModal) loginModal.classList.remove('open');
   }
 
   function openOwnerDashboard() {
     closeOwnerLogin();
-    if (ownerElements.panelModal) {
-      ownerElements.panelModal.classList.add('open');
+    const panelModal = document.getElementById('ownerPanelModal');
+    if (panelModal) {
+      panelModal.classList.add('open');
       renderOwnerDashboard();
     }
   }
 
   function closeOwnerDashboard() {
     isOwnerSessionActive = false;
-    if (ownerElements.panelModal) ownerElements.panelModal.classList.remove('open');
+    const panelModal = document.getElementById('ownerPanelModal');
+    if (panelModal) panelModal.classList.remove('open');
   }
 
   function setupOwnerEngine() {
@@ -2154,69 +2154,72 @@
       openOwnerPortal();
     });
 
-    if (ownerElements.loginModalClose) ownerElements.loginModalClose.addEventListener('click', closeOwnerLogin);
-    if (ownerElements.panelModalClose) ownerElements.panelModalClose.addEventListener('click', closeOwnerDashboard);
+    // Delegate modal controls so handlers survive any DOM re-render.
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('#ownerLoginModalClose')) closeOwnerLogin();
+      if (e.target.closest('#ownerPanelModalClose')) closeOwnerDashboard();
 
-    // Password visibility toggle
-    if (ownerElements.togglePwdVisibility) {
-      ownerElements.togglePwdVisibility.addEventListener('click', () => {
-        if (ownerElements.loginPassword.type === 'password') {
-          ownerElements.loginPassword.type = 'text';
-          ownerElements.togglePwdVisibility.textContent = 'Hide Password';
-        } else {
-          ownerElements.loginPassword.type = 'password';
-          ownerElements.togglePwdVisibility.textContent = 'Show Password';
+      const toggle = e.target.closest('#togglePasswordVisibility');
+      if (toggle) {
+        const pwd = document.getElementById('ownerLoginPassword');
+        if (pwd) {
+          const show = pwd.type === 'password';
+          pwd.type = show ? 'text' : 'password';
+          toggle.textContent = show ? 'Hide Password' : 'Show Password';
         }
-      });
-    }
+      }
+    });
 
-    // Login Form Submit
-    if (ownerElements.loginForm) {
-      ownerElements.loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = (ownerElements.loginEmail.value || '').trim().toLowerCase();
-        const pwd = (ownerElements.loginPassword.value || '').trim();
+    // Login Form Submit — delegated so it works even if the modal DOM is re-rendered.
+    document.addEventListener('submit', async (e) => {
+      if (!e.target || e.target.id !== 'ownerLoginForm') return;
+      e.preventDefault();
 
-        if (email !== OWNER_EMAIL.toLowerCase()) {
-          showLoginError(`Access denied. ${email} is not the registered owner account.`);
-          return;
-        }
+      const emailInput = document.getElementById('ownerLoginEmail');
+      const pwdInput = document.getElementById('ownerLoginPassword');
+      const email = ((emailInput && emailInput.value) || '').trim().toLowerCase();
+      const pwd = ((pwdInput && pwdInput.value) || '').trim();
 
-        const submitBtn = ownerElements.loginSubmitBtn;
-        if (submitBtn) {
-          submitBtn.disabled = true;
-          submitBtn.textContent = 'Verifying…';
-        }
+      if (email !== OWNER_EMAIL.toLowerCase()) {
+        showLoginError(`Access denied. ${email} is not the registered owner account.`);
+        return;
+      }
 
-        try {
-          const data = await ownerApi('login', {
-            email,
-            password: pwd,
-            defaults: {
-              products: state.products,
-              payments: getStoredPayments(),
-              keys: buildDefaultKeys(state.products)
-            }
-          });
+      const submitBtn = document.getElementById('ownerLoginSubmitBtn');
+      const originalHtml = submitBtn ? submitBtn.innerHTML : '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Verifying…';
+      }
 
-          ownerPassword = pwd;
-          applyOwnerPayload(data);
-          isOwnerSessionActive = true;
-          updateOwnerButtonState();
-          ownerElements.loginPassword.value = '';
-          hideLoginError();
-          showToast('Authenticated as Owner (rezinestudio@gmail.com)', '⚡');
-          openOwnerDashboard();
-        } catch (error) {
-          showLoginError(error.message || 'Unable to verify owner credentials right now.');
-        } finally {
-          if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Verify & Access Console';
+      try {
+        const data = await ownerApi('login', {
+          email,
+          password: pwd,
+          defaults: {
+            products: state.products,
+            payments: getStoredPayments(),
+            keys: buildDefaultKeys(state.products)
           }
+        });
+
+        ownerPassword = pwd;
+        applyOwnerPayload(data);
+        isOwnerSessionActive = true;
+        updateOwnerButtonState();
+        if (pwdInput) pwdInput.value = '';
+        hideLoginError();
+        showToast('Authenticated as Owner (rezinestudio@gmail.com)', '⚡');
+        openOwnerDashboard();
+      } catch (error) {
+        showLoginError(error.message || 'Unable to verify owner credentials right now.');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalHtml;
         }
-      });
-    }
+      }
+    });
 
     // Logout
     if (ownerElements.logoutBtn) {
@@ -2454,16 +2457,18 @@
   }
 
   function showLoginError(msg) {
-    if (ownerElements.loginError) {
-      ownerElements.loginError.textContent = msg;
-      ownerElements.loginError.style.display = 'block';
+    const el = document.getElementById('ownerLoginError');
+    if (el) {
+      el.textContent = msg;
+      el.style.display = 'block';
     }
   }
 
   function hideLoginError() {
-    if (ownerElements.loginError) {
-      ownerElements.loginError.textContent = '';
-      ownerElements.loginError.style.display = 'none';
+    const el = document.getElementById('ownerLoginError');
+    if (el) {
+      el.textContent = '';
+      el.style.display = 'none';
     }
   }
 
