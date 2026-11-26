@@ -1,4 +1,4 @@
-﻿/**
+/**
  * DEEPSENSE - CLIENT STOREFRONT APPLICATION
  * Store ID: 207573
  * SellAuth API Integration & Interactive UI Engine
@@ -17,6 +17,18 @@
     discountRate: 0,
     servicesStatus: []
   };
+
+  // Shared server-backed catalog. Only the owner can write to it.
+  // Visitors read the same data from /api/store, so changes show for everyone.
+  const sharedState = {
+    products: null,
+    payments: null,
+    keys: {},
+    updatedAt: null
+  };
+
+  // Kept in memory only - never persisted in localStorage or sessionStorage.
+  let ownerPassword = '';
 
   // Catalog holds exclusively SellAuth shop products
   const DEFAULT_CATALOG = [
@@ -406,6 +418,13 @@
     setupResellerForm();
     loadProducts();
     updateCartUI();
+    loadPublicStore();
+
+    // Keep open tabs in sync with changes made from the Owner Console.
+    setInterval(loadPublicStore, 15000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) loadPublicStore();
+    });
   }
 
   // 1. Navigation & Tab Switching
@@ -482,15 +501,12 @@
     }
   }
 
-    // 2. Synchronous Instant Products Loader (Zero Network Blocking)
+    // 2. Instant catalog renderer. Data comes from the shared store when available.
   function loadProducts() {
-    const storedCustom = getStoredCustomProducts();
-    if (storedCustom && Array.isArray(storedCustom) && storedCustom.length > 0) {
-      state.products = storedCustom;
-    } else {
-      state.products = JSON.parse(JSON.stringify(DEFAULT_CATALOG));
-      saveStoredProducts(state.products);
-    }
+    const sharedProducts = getStoredCustomProducts();
+    state.products = Array.isArray(sharedProducts)
+      ? clone(sharedProducts)
+      : JSON.parse(JSON.stringify(DEFAULT_CATALOG));
 
     // Normalize all products: resolve category names and image URLs
     state.products = state.products.map(p => {
@@ -539,13 +555,13 @@
     if (p.images && p.images.length > 0 && p.images[0].url) return p.images[0].url;
     if (p.image) return p.image;
     const lowerName = (p.name || '').toLowerCase();
-    if (lowerName.includes('rust')) return '/assets/1058939.webp';
-    if (lowerName.includes('fortnite')) return '/assets/1152335.webp';
-    if (lowerName.includes('valorant')) return '/assets/1000627.webp';
-    if (lowerName.includes('apex')) return '/assets/1058898.webp';
-    if (lowerName.includes('cod') || lowerName.includes('warzone')) return '/assets/1150492.webp';
-    if (lowerName.includes('spoofer')) return '/assets/1152351.webp';
-    return '/assets/1058939.webp';
+    if (lowerName.includes('rust')) return 'assets/rust.svg';
+    if (lowerName.includes('fortnite')) return 'assets/fortnite.svg';
+    if (lowerName.includes('valorant')) return 'assets/valorant.svg';
+    if (lowerName.includes('apex')) return 'assets/apex.svg';
+    if (lowerName.includes('cod') || lowerName.includes('warzone')) return 'assets/warzone.svg';
+    if (lowerName.includes('spoofer')) return 'assets/spoofer.svg';
+    return 'assets/fortnite.svg';
   }
 
   // Render Product Card HTML - Matches Uploaded Reference Exactly
@@ -562,7 +578,7 @@
       <div class="product-card" data-product-id="${p.id}">
         <!-- 3D Box Banner Container with Radial Glow and Undetected Badge -->
         <div class="product-banner-wrapper" data-product-id="${p.id}">
-          <img src="${img}" alt="${p.name}" class="product-banner-img" onerror="this.onerror=null; this.src='/assets/1058939.webp';">
+          <img src="${img}" alt="${p.name}" class="product-banner-img" onerror="this.onerror=null; this.src='assets/fortnite.svg';">
           <div class="product-undetected-badge" style="border-color: ${statusColor}70; color: ${statusColor}; background: rgba(0, 0, 0, 0.78);">
             <span class="undetected-dot" style="background: ${statusColor}; box-shadow: 0 0 6px ${statusColor};"></span>
             <span>${statusText}</span>
@@ -715,7 +731,7 @@
         <div class="v-media-column">
           <div class="v-media-box" id="vMediaBox">
             <div class="v-media-image-view" id="vMediaImageView">
-              <img src="${img}" alt="${prod.name}" class="v-box-render" onerror="this.onerror=null; this.src='/assets/1058939.webp';">
+              <img src="${img}" alt="${prod.name}" class="v-box-render" onerror="this.onerror=null; this.src='assets/fortnite.svg';">
               <div class="v-radial-glow"></div>
             </div>
             <div class="v-media-video-view hidden" id="vMediaVideoView">
@@ -1101,7 +1117,7 @@
       variantName: item.variantName || 'Access Key',
       price: typeof item.price === 'number' ? item.price : parseFloat(item.price || 0),
       quantity: item.quantity || 1,
-      image: item.image || '/assets/1058939.webp'
+      image: item.image || 'assets/fortnite.svg'
     }));
 
     let currentDiscountRate = state.discountRate || 0;
@@ -1115,7 +1131,7 @@
 
       const itemsHTML = checkoutItems.map(item => `
         <div class="checkout-item-row">
-          <img src="${item.image}" alt="${item.productName}" class="checkout-item-thumb" onerror="this.onerror=null; this.src='/assets/1058939.webp';">
+          <img src="${item.image}" alt="${item.productName}" class="checkout-item-thumb" onerror="this.onerror=null; this.src='assets/fortnite.svg';">
           <div class="checkout-item-meta">
             <div class="checkout-item-name">${item.productName}</div>
             <span class="checkout-item-variant-pill">${item.variantName} &bull; Qty ${item.quantity}</span>
@@ -1326,7 +1342,9 @@
                 }
               }
             });
-            saveStoredKeys(allKeys);
+            if (dispatchedKeys.length > 0 && ownerPassword) {
+              await saveStoredKeys(allKeys);
+            }
 
             const invId = 'DS-' + Math.floor(100000 + Math.random() * 900000);
             
@@ -1819,10 +1837,6 @@
     init();
   }
 
-})();
-
-
-
   // Toast Notification Engine
   function showToast(message, icon = '&#10003;') {
     const container = document.getElementById('toastContainer');
@@ -1844,7 +1858,6 @@
   // Products Governance, Key Inventory Provisioning, Payment Gateway Routing
   // ==========================================================================
   const OWNER_EMAIL = 'rezinestudio@gmail.com';
-  const DEFAULT_OWNER_PWD = 'DeepsenseOwner2025!';
 
   const DEFAULT_PAYMENT_METHODS = [
     { id: 'CASHAPP', name: 'Cash App', sub: '$cashtag & QR Direct', enabled: true, address: '$DeepsenseUD', fieldLabel: '$Cashtag' },
@@ -1855,62 +1868,147 @@
     { id: 'PAYPAL', name: 'PayPal', sub: 'Friends & Family Direct', enabled: true, address: 'payments@deepsense.gg', fieldLabel: 'PayPal Email / Me' }
   ];
 
-  function getStoredOwnerPassword() {
-    return localStorage.getItem('deepsense_owner_pwd') || DEFAULT_OWNER_PWD;
-  }
+  const PRODUCT_IMAGE_PRESETS = [
+    { label: 'Fortnite', src: 'assets/fortnite.svg' },
+    { label: 'CS2', src: 'assets/cs2.svg' },
+    { label: 'Rust', src: 'assets/rust.svg' },
+    { label: 'Valorant', src: 'assets/valorant.svg' },
+    { label: 'Apex', src: 'assets/apex.svg' },
+    { label: 'Warzone', src: 'assets/warzone.svg' },
+    { label: 'Spoofer', src: 'assets/spoofer.svg' },
+    { label: 'DMA', src: 'assets/dma.svg' }
+  ];
 
   let isOwnerSessionActive = false;
   function isOwnerAuthenticated() {
     return isOwnerSessionActive;
   }
 
-  function getStoredPayments() {
-    try {
-      const stored = localStorage.getItem('deepsense_payment_methods');
-      if (stored) return JSON.parse(stored);
-    } catch (e) {}
-    return JSON.parse(JSON.stringify(DEFAULT_PAYMENT_METHODS));
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
   }
 
-  function saveStoredPayments(methods) {
-    localStorage.setItem('deepsense_payment_methods', JSON.stringify(methods));
-  }
-
-  function getStoredKeys() {
-    try {
-      const stored = localStorage.getItem('deepsense_product_keys');
-      if (stored) return JSON.parse(stored);
-    } catch (e) {}
-    // Seed initial sample keys
-    const initialKeys = {};
-    state.products.forEach(p => {
+  function buildDefaultKeys(products) {
+    const keys = {};
+    products.forEach(p => {
       (p.variants || []).forEach(v => {
-        const k = `${p.id}_${v.id}`;
-        initialKeys[k] = [
-          `DS-${p.name.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}-KEY1`,
-          `DS-${p.name.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}-KEY2`,
-          `DS-${p.name.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}-KEY3`
+        const prefix = `DS-${String(p.name).replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase()}`;
+        keys[`${p.id}_${v.id}`] = [
+          `${prefix}-${Math.floor(1000 + Math.random() * 9000)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}-KEY1`,
+          `${prefix}-${Math.floor(1000 + Math.random() * 9000)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}-KEY2`,
+          `${prefix}-${Math.floor(1000 + Math.random() * 9000)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}-KEY3`
         ];
       });
     });
-    localStorage.setItem('deepsense_product_keys', JSON.stringify(initialKeys));
-    return initialKeys;
+    return keys;
+  }
+
+  function getStoredPayments() {
+    return clone(sharedState.payments || DEFAULT_PAYMENT_METHODS);
+  }
+
+  function saveStoredPayments(methods) {
+    sharedState.payments = clone(methods);
+    return persistSharedState();
+  }
+
+  function getStoredKeys() {
+    return sharedState.keys;
   }
 
   function saveStoredKeys(keysObj) {
-    localStorage.setItem('deepsense_product_keys', JSON.stringify(keysObj));
+    sharedState.keys = clone(keysObj);
+    return persistSharedState();
   }
 
   function getStoredCustomProducts() {
-    try {
-      const stored = localStorage.getItem('deepsense_custom_products');
-      if (stored) return JSON.parse(stored);
-    } catch (e) {}
-    return null;
+    return sharedState.products;
   }
 
   function saveStoredProducts(prods) {
-    localStorage.setItem('deepsense_custom_products', JSON.stringify(prods));
+    sharedState.products = clone(prods);
+    return persistSharedState();
+  }
+
+  async function ownerApi(action, extra = {}) {
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    if (action !== 'login' && ownerPassword) {
+      headers['x-owner-password'] = ownerPassword;
+    }
+
+    let response;
+    try {
+      response = await fetch('/api/owner', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action, ...extra })
+      });
+    } catch (networkError) {
+      console.error('Shared store request failed:', networkError);
+      const error = new Error('Shared store is unreachable. Check your connection and the site deployment.');
+      error.status = 0;
+      throw error;
+    }
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const fallback = response.status === 404
+        ? 'Shared store API is not deployed (HTTP 404).'
+        : `Shared store request failed (HTTP ${response.status}).`;
+      const error = new Error(data.error || fallback);
+      error.status = response.status;
+      throw error;
+    }
+    return data;
+  }
+
+  function applyOwnerPayload(data) {
+    sharedState.products = clone(data.products || []);
+    sharedState.payments = clone(data.payments || []);
+    sharedState.keys = clone(data.keys || {});
+    sharedState.updatedAt = data.updatedAt || null;
+    state.products = clone(sharedState.products);
+    loadProducts();
+    if (isOwnerAuthenticated()) renderOwnerDashboard();
+  }
+
+  async function persistSharedState() {
+    if (!ownerPassword) {
+      showToast('Owner session expired. Please log in again.', '⚠️');
+      return false;
+    }
+
+    try {
+      const data = await ownerApi('save', {
+        products: sharedState.products || state.products,
+        payments: sharedState.payments || DEFAULT_PAYMENT_METHODS,
+        keys: sharedState.keys
+      });
+      applyOwnerPayload(data);
+      return true;
+    } catch (error) {
+      console.error('Shared store save failed:', error);
+      showToast(error.message || 'Changes could not be saved. Try again.', '⚠️');
+      return false;
+    }
+  }
+
+  async function loadPublicStore() {
+    if (isOwnerAuthenticated()) return;
+    try {
+      const response = await fetch('/api/store', { cache: 'no-store' });
+      if (!response.ok) return;
+      const data = await response.json();
+      sharedState.products = Array.isArray(data.products) ? data.products : null;
+      sharedState.payments = Array.isArray(data.payments) ? data.payments : null;
+      sharedState.keys = {};
+      sharedState.updatedAt = data.updatedAt || null;
+      loadProducts();
+    } catch (error) {
+      console.warn('Using local catalog; shared store unavailable:', error);
+    }
   }
 
   // Owner Elements
@@ -1924,6 +2022,7 @@
     loginForm: document.getElementById('ownerLoginForm'),
     loginEmail: document.getElementById('ownerLoginEmail'),
     loginPassword: document.getElementById('ownerLoginPassword'),
+    loginSubmitBtn: document.getElementById('ownerLoginSubmitBtn'),
     loginError: document.getElementById('ownerLoginError'),
     togglePwdVisibility: document.getElementById('togglePasswordVisibility'),
     panelModal: document.getElementById('ownerPanelModal'),
@@ -1938,8 +2037,21 @@
     addProductBox: document.getElementById('addProductFormWrapper'),
     cancelAddProductBtn: document.getElementById('cancelAddProductBtn'),
     addProductForm: document.getElementById('ownerAddProductForm'),
-    newProdPreset: document.getElementById('newProdImagePreset'),
-    newProdCustomImg: document.getElementById('newProdImageCustom'),
+    newProdImage: document.getElementById('newProdImage'),
+    newProdImagePreview: document.getElementById('newProdImagePreview'),
+    newProdImageHint: document.getElementById('newProdImageHint'),
+    chooseNewProdImageBtn: document.getElementById('chooseNewProdImageBtn'),
+    imagePickerModal: document.getElementById('ownerImagePickerModal'),
+    imagePickerClose: document.getElementById('ownerImagePickerClose'),
+    imagePickerPreview: document.getElementById('imagePickerPreview'),
+    imagePickerSourceLabel: document.getElementById('imagePickerSourceLabel'),
+    imagePickerPresets: document.getElementById('imagePickerPresets'),
+    imagePickerFileInput: document.getElementById('imagePickerFileInput'),
+    imagePickerCustomUrl: document.getElementById('imagePickerCustomUrl'),
+    applyImageUrlBtn: document.getElementById('applyImageUrlBtn'),
+    imagePickerError: document.getElementById('imagePickerError'),
+    imagePickerCancelBtn: document.getElementById('imagePickerCancelBtn'),
+    imagePickerSaveBtn: document.getElementById('imagePickerSaveBtn'),
     productsList: document.getElementById('ownerProductsList'),
     stockProductSelect: document.getElementById('stockProductSelect'),
     stockVariantSelect: document.getElementById('stockVariantSelect'),
@@ -2060,7 +2172,7 @@
 
     // Login Form Submit
     if (ownerElements.loginForm) {
-      ownerElements.loginForm.addEventListener('submit', (e) => {
+      ownerElements.loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const email = (ownerElements.loginEmail.value || '').trim().toLowerCase();
         const pwd = (ownerElements.loginPassword.value || '').trim();
@@ -2070,17 +2182,39 @@
           return;
         }
 
-        const validPwd = getStoredOwnerPassword();
-        if (pwd !== validPwd) {
-          showLoginError('Incorrect password. Please verify master password and try again.');
-          return;
+        const submitBtn = ownerElements.loginSubmitBtn;
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Verifying…';
         }
 
-        // Authentication Successful
-        isOwnerSessionActive = true;
-        updateOwnerButtonState();
-        showToast('Authenticated as Owner (rezinestudio@gmail.com)', '⚡');
-        openOwnerDashboard();
+        try {
+          const data = await ownerApi('login', {
+            email,
+            password: pwd,
+            defaults: {
+              products: state.products,
+              payments: getStoredPayments(),
+              keys: buildDefaultKeys(state.products)
+            }
+          });
+
+          ownerPassword = pwd;
+          applyOwnerPayload(data);
+          isOwnerSessionActive = true;
+          updateOwnerButtonState();
+          ownerElements.loginPassword.value = '';
+          hideLoginError();
+          showToast('Authenticated as Owner (rezinestudio@gmail.com)', '⚡');
+          openOwnerDashboard();
+        } catch (error) {
+          showLoginError(error.message || 'Unable to verify owner credentials right now.');
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Verify & Access Console';
+          }
+        }
       });
     }
 
@@ -2088,8 +2222,11 @@
     if (ownerElements.logoutBtn) {
       ownerElements.logoutBtn.addEventListener('click', () => {
         isOwnerSessionActive = false;
+        ownerPassword = '';
+        sharedState.keys = {};
         updateOwnerButtonState();
         closeOwnerDashboard();
+        loadPublicStore();
         showToast('Logged out of owner console.');
       });
     }
@@ -2108,17 +2245,21 @@
       });
     });
 
-    // Image preset toggle
-    if (ownerElements.newProdPreset) {
-      ownerElements.newProdPreset.addEventListener('change', () => {
-        if (ownerElements.newProdPreset.value === 'custom') {
-          ownerElements.newProdCustomImg.style.display = 'block';
-          ownerElements.newProdCustomImg.required = true;
-        } else {
-          ownerElements.newProdCustomImg.style.display = 'none';
-          ownerElements.newProdCustomImg.required = false;
-        }
+    // Product thumbnail picker (add form + existing products)
+    if (ownerElements.chooseNewProdImageBtn) {
+      ownerElements.chooseNewProdImageBtn.addEventListener('click', () => {
+        openImagePicker({
+          mode: 'new',
+          current: ownerElements.newProdImage ? ownerElements.newProdImage.value : PRODUCT_IMAGE_PRESETS[0].src
+        });
       });
+    }
+    if (ownerElements.imagePickerClose) ownerElements.imagePickerClose.addEventListener('click', closeImagePicker);
+    if (ownerElements.imagePickerCancelBtn) ownerElements.imagePickerCancelBtn.addEventListener('click', closeImagePicker);
+    if (ownerElements.imagePickerSaveBtn) ownerElements.imagePickerSaveBtn.addEventListener('click', saveImagePickerSelection);
+    if (ownerElements.applyImageUrlBtn) ownerElements.applyImageUrlBtn.addEventListener('click', applyImagePickerUrl);
+    if (ownerElements.imagePickerFileInput) {
+      ownerElements.imagePickerFileInput.addEventListener('change', handleImagePickerUpload);
     }
 
     // Toggle Add Product Form
@@ -2160,9 +2301,9 @@
       ownerElements.paymentsForm.addEventListener('submit', handleOwnerSavePayments);
     }
     if (ownerElements.resetPaymentsBtn) {
-      ownerElements.resetPaymentsBtn.addEventListener('click', () => {
+      ownerElements.resetPaymentsBtn.addEventListener('click', async () => {
         if (confirm('Restore default payment gateway addresses?')) {
-          saveStoredPayments(DEFAULT_PAYMENT_METHODS);
+          if (!(await saveStoredPayments(DEFAULT_PAYMENT_METHODS))) return;
           renderOwnerPayments();
           showToast('Payment gateways restored to defaults.');
         }
@@ -2185,10 +2326,144 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Product Thumbnail Image Picker
+  // ---------------------------------------------------------------------------
+  let imagePickerState = { mode: 'new', productId: null, selected: PRODUCT_IMAGE_PRESETS[0].src };
+
+  function setImagePickerSelection(src) {
+    if (!src) return;
+    imagePickerState.selected = src;
+    if (ownerElements.imagePickerPreview) ownerElements.imagePickerPreview.src = src;
+    if (ownerElements.imagePickerSourceLabel) {
+      ownerElements.imagePickerSourceLabel.textContent = src.startsWith('data:') ? 'Uploaded image (saved to this browser)' : src;
+    }
+    if (ownerElements.imagePickerError) ownerElements.imagePickerError.style.display = 'none';
+    if (ownerElements.imagePickerPresets) {
+      ownerElements.imagePickerPresets.querySelectorAll('.image-picker-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.src === src);
+      });
+    }
+  }
+
+  function openImagePicker(opts) {
+    imagePickerState = {
+      mode: opts.mode || 'new',
+      productId: opts.productId || null,
+      selected: opts.current || PRODUCT_IMAGE_PRESETS[0].src
+    };
+    if (ownerElements.imagePickerCustomUrl) ownerElements.imagePickerCustomUrl.value = '';
+    if (ownerElements.imagePickerFileInput) ownerElements.imagePickerFileInput.value = '';
+    if (ownerElements.imagePickerError) ownerElements.imagePickerError.style.display = 'none';
+
+    if (ownerElements.imagePickerPresets) {
+      ownerElements.imagePickerPresets.innerHTML = PRODUCT_IMAGE_PRESETS.map(p => `
+        <button type="button" class="image-picker-item" data-src="${p.src}" title="${p.label}">
+          <img src="${p.src}" alt="${p.label}">
+          <span>${p.label}</span>
+        </button>
+      `).join('');
+      ownerElements.imagePickerPresets.querySelectorAll('.image-picker-item').forEach(item => {
+        item.addEventListener('click', () => setImagePickerSelection(item.dataset.src));
+      });
+    }
+
+    setImagePickerSelection(imagePickerState.selected);
+    if (ownerElements.imagePickerModal) ownerElements.imagePickerModal.classList.add('open');
+  }
+
+  function closeImagePicker() {
+    if (ownerElements.imagePickerModal) ownerElements.imagePickerModal.classList.remove('open');
+  }
+
+  function applyImagePickerUrl() {
+    const url = (ownerElements.imagePickerCustomUrl && ownerElements.imagePickerCustomUrl.value || '').trim();
+    if (!url) {
+      if (ownerElements.imagePickerError) {
+        ownerElements.imagePickerError.textContent = 'Enter an image URL first.';
+        ownerElements.imagePickerError.style.display = 'block';
+      }
+      return;
+    }
+    setImagePickerSelection(url);
+  }
+
+  function handleImagePickerUpload(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      if (ownerElements.imagePickerError) {
+        ownerElements.imagePickerError.textContent = 'Please choose an image file.';
+        ownerElements.imagePickerError.style.display = 'block';
+      }
+      return;
+    }
+
+    if (file.type === 'image/svg+xml') {
+      const reader = new FileReader();
+      reader.onload = () => setImagePickerSelection(String(reader.result));
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const maxSide = 900;
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setImagePickerSelection(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = () => {
+        if (ownerElements.imagePickerError) {
+          ownerElements.imagePickerError.textContent = 'That image could not be read.';
+          ownerElements.imagePickerError.style.display = 'block';
+        }
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function saveImagePickerSelection() {
+    const src = imagePickerState.selected;
+    if (imagePickerState.mode === 'existing' && imagePickerState.productId != null) {
+      const prod = state.products.find(p => p.id === imagePickerState.productId);
+      if (prod) {
+        prod.image = src;
+        if (prod.images && prod.images.length) prod.images[0].url = src;
+        await saveStoredProducts(state.products);
+        renderFeatured();
+        renderCatalog();
+        renderOwnerProducts();
+        showToast(`Thumbnail updated for "${prod.name}".`, '🖼️');
+      }
+    } else {
+      if (ownerElements.newProdImage) ownerElements.newProdImage.value = src;
+      if (ownerElements.newProdImagePreview) ownerElements.newProdImagePreview.src = src;
+      if (ownerElements.newProdImageHint) {
+        ownerElements.newProdImageHint.textContent = src.startsWith('data:') ? 'Uploaded image (saved to this browser)' : src;
+      }
+      showToast('Product thumbnail selected.', '🖼️');
+    }
+    closeImagePicker();
+  }
+
   function showLoginError(msg) {
     if (ownerElements.loginError) {
       ownerElements.loginError.textContent = msg;
       ownerElements.loginError.style.display = 'block';
+    }
+  }
+
+  function hideLoginError() {
+    if (ownerElements.loginError) {
+      ownerElements.loginError.textContent = '';
+      ownerElements.loginError.style.display = 'none';
     }
   }
 
@@ -2270,6 +2545,10 @@
               <span class="undetected-dot" style="background: ${statusColor}; width: 6px; height: 6px; box-shadow: 0 0 6px ${statusColor};"></span>
               ${statusText}
             </span>
+            <button type="button" class="owner-prod-image-btn btn-change-prod-image" data-product-id="${p.id}" title="Change this product's thumbnail">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+              <span>Image</span>
+            </button>
             <button class="btn-delete-prod" data-product-id="${p.id}" title="Remove this product from catalog">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
               <span>Delete</span>
@@ -2279,15 +2558,25 @@
       `;
     }).join('');
 
+    // Bind thumbnail change events
+    ownerElements.productsList.querySelectorAll('.btn-change-prod-image').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const prodId = parseInt(btn.dataset.productId, 10);
+        const prod = state.products.find(p => p.id === prodId);
+        if (!prod) return;
+        openImagePicker({ mode: 'existing', productId: prodId, current: getProductImage(prod) });
+      });
+    });
+
     // Bind delete events
     ownerElements.productsList.querySelectorAll('.btn-delete-prod').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const prodId = parseInt(btn.dataset.productId, 10);
         const prod = state.products.find(p => p.id === prodId);
         if (!prod) return;
         if (confirm(`Are you sure you want to permanently delete "${prod.name}" from the store catalog?`)) {
           state.products = state.products.filter(p => p.id !== prodId);
-          saveStoredProducts(state.products);
+          await saveStoredProducts(state.products);
           renderCategoryFilters();
           renderFeatured();
           renderCatalog();
@@ -2298,12 +2587,11 @@
     });
   }
 
-  function handleOwnerAddProduct(e) {
+  async function handleOwnerAddProduct(e) {
     e.preventDefault();
     const name = document.getElementById('newProdName').value.trim();
     const category = document.getElementById('newProdCategory').value.trim();
-    const preset = document.getElementById('newProdImagePreset').value;
-    const customImg = document.getElementById('newProdImageCustom').value.trim();
+    const imgUrl = (ownerElements.newProdImage && ownerElements.newProdImage.value.trim()) || PRODUCT_IMAGE_PRESETS[0].src;
     const status = document.getElementById('newProdStatus').value;
     const desc = document.getElementById('newProdDesc').value.trim();
     const isFeatured = document.getElementById('newProdFeatured').checked;
@@ -2313,7 +2601,6 @@
     const pMonth = parseFloat(document.getElementById('vPriceMonth').value) || 54.99;
     const pLife = parseFloat(document.getElementById('vPriceLife').value) || 149.99;
 
-    const imgUrl = (preset === 'custom' && customImg) ? customImg : preset;
     const newId = Date.now();
 
     const newProduct = {
@@ -2343,17 +2630,22 @@
     };
 
     state.products.unshift(newProduct);
-    saveStoredProducts(state.products);
+    sharedState.products = clone(state.products);
 
-    // Seed empty keys list
+    // Seed empty keys list for the new product
     const allKeys = getStoredKeys();
     newProduct.variants.forEach(v => {
       allKeys[`${newProduct.id}_${v.id}`] = [];
     });
-    saveStoredKeys(allKeys);
+    sharedState.keys = clone(allKeys);
+
+    if (!(await persistSharedState())) return;
 
     ownerElements.addProductForm.reset();
     ownerElements.addProductBox.style.display = 'none';
+    if (ownerElements.newProdImage) ownerElements.newProdImage.value = PRODUCT_IMAGE_PRESETS[0].src;
+    if (ownerElements.newProdImagePreview) ownerElements.newProdImagePreview.src = PRODUCT_IMAGE_PRESETS[0].src;
+    if (ownerElements.newProdImageHint) ownerElements.newProdImageHint.textContent = PRODUCT_IMAGE_PRESETS[0].src;
 
     renderCategoryFilters();
     renderFeatured();
@@ -2384,7 +2676,7 @@
     `).join('');
   }
 
-  function handleOwnerAddKeys(e) {
+  async function handleOwnerAddKeys(e) {
     e.preventDefault();
     const prodId = parseInt(ownerElements.stockProductSelect.value, 10);
     const varId = ownerElements.stockVariantSelect.value;
@@ -2404,7 +2696,7 @@
     const keySlot = `${prodId}_${varId}`;
     if (!allKeys[keySlot]) allKeys[keySlot] = [];
     allKeys[keySlot].push(...keys);
-    saveStoredKeys(allKeys);
+    if (!(await saveStoredKeys(allKeys))) return;
 
     ownerElements.stockTextarea.value = '';
     ownerElements.stockInputCount.textContent = '0 keys detected';
@@ -2476,7 +2768,7 @@
     `).join('');
   }
 
-  function handleOwnerSavePayments(e) {
+  async function handleOwnerSavePayments(e) {
     e.preventDefault();
     const payments = getStoredPayments();
     const toggles = ownerElements.gatewaysContainer.querySelectorAll('.gw-enable-toggle');
@@ -2492,20 +2784,20 @@
       if (payments[idx]) payments[idx].address = input.value.trim();
     });
 
-    saveStoredPayments(payments);
+    if (!(await saveStoredPayments(payments))) return;
     renderOwnerStats();
     showToast('Payment gateway routing saved successfully!', '💳');
   }
 
   // 4. Security & Reset
-  function handleOwnerChangePassword(e) {
+  async function handleOwnerChangePassword(e) {
     e.preventDefault();
     const curr = document.getElementById('currOwnerPwd').value.trim();
     const newPwd = document.getElementById('newOwnerPwd').value.trim();
     const confirmPwd = document.getElementById('confirmOwnerPwd').value.trim();
     const feedback = ownerElements.changePwdFeedback;
 
-    if (curr !== getStoredOwnerPassword()) {
+    if (curr !== ownerPassword) {
       feedback.className = 'owner-alert error';
       feedback.textContent = 'Current master password does not match.';
       feedback.style.display = 'block';
@@ -2526,23 +2818,30 @@
       return;
     }
 
-    localStorage.setItem('deepsense_owner_pwd', newPwd);
-    ownerElements.changePwdForm.reset();
-    feedback.className = 'owner-alert success';
-    feedback.textContent = 'Master password updated successfully!';
-    feedback.style.display = 'block';
-    showToast('Master password updated!', '🔒');
+    try {
+      const data = await ownerApi('changePassword', { newPassword: newPwd });
+      ownerPassword = newPwd;
+      applyOwnerPayload(data);
+      ownerElements.changePwdForm.reset();
+      feedback.className = 'owner-alert success';
+      feedback.textContent = 'Master password updated successfully!';
+      feedback.style.display = 'block';
+      showToast('Master password updated!', '🔒');
+    } catch (error) {
+      feedback.className = 'owner-alert error';
+      feedback.textContent = error.message || 'Could not update the master password.';
+      feedback.style.display = 'block';
+    }
   }
 
-  function handleOwnerResetStore() {
+  async function handleOwnerResetStore() {
     if (confirm('CRITICAL ACTION: Reset store catalog to factory defaults? All custom products and keys will be re-initialized.')) {
-      localStorage.removeItem('deepsense_custom_products');
-      localStorage.removeItem('deepsense_product_keys');
-      localStorage.removeItem('deepsense_payment_methods');
-      state.products = [...DEFAULT_CATALOG];
-      saveStoredProducts(state.products);
-      getStoredKeys(); // seed default keys
-      saveStoredPayments(DEFAULT_PAYMENT_METHODS);
+      state.products = JSON.parse(JSON.stringify(DEFAULT_CATALOG));
+      sharedState.products = clone(state.products);
+      sharedState.keys = buildDefaultKeys(state.products);
+      sharedState.payments = clone(DEFAULT_PAYMENT_METHODS);
+
+      if (!(await persistSharedState())) return;
 
       renderCategoryFilters();
       renderFeatured();
@@ -2551,3 +2850,5 @@
       showToast('Store reset to verified defaults.', '🔄');
     }
   }
+
+})();
